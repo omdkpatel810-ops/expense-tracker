@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# Virtual environments
+.venv/
+venv/
+
+# Test and tool caches
+.pytest_cache/
+.coverage
+
+# Local databases (never commit real spending data)
+*.db
+*.sqlite3
+
+# Editors and OS
+.vscode/
+.idea/
+.DS_Store
