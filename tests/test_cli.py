@@ -99,6 +99,20 @@ def test_categories(run):
     assert rows == [["food", "2"], ["rent", "1"]]
 
 
+def test_database_from_newer_app_gives_clear_error(tmp_path, capsys):
+    import sqlite3
+
+    path = tmp_path / "newer.db"
+    raw = sqlite3.connect(path)
+    raw.execute("PRAGMA user_version = 99")
+    raw.close()
+
+    code = main(["--db", str(path), "list"])
+
+    assert code == 1
+    assert "Update the app" in capsys.readouterr().err
+
+
 def test_default_db_path_uses_env_var(monkeypatch, tmp_path):
     monkeypatch.setenv("EXPENSE_DB", str(tmp_path / "mine.db"))
     assert default_db_path() == tmp_path / "mine.db"

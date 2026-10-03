@@ -11,18 +11,7 @@ from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
-SCHEMA = """
-CREATE TABLE IF NOT EXISTS expenses (
-    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    amount_cents INTEGER NOT NULL CHECK (amount_cents > 0),
-    category     TEXT    NOT NULL CHECK (length(category) > 0),
-    description  TEXT    NOT NULL DEFAULT '',
-    spent_on     TEXT    NOT NULL,  -- ISO date like 2026-09-30, so text order = date order
-    created_at   TEXT    NOT NULL DEFAULT (datetime('now'))
-);
-CREATE INDEX IF NOT EXISTS idx_expenses_spent_on ON expenses (spent_on);
-CREATE INDEX IF NOT EXISTS idx_expenses_category ON expenses (category);
-"""
+from expense_tracker import migrations
 
 
 @dataclass(frozen=True)
@@ -35,12 +24,16 @@ class Expense:
 
 
 def connect(path: Path | str) -> sqlite3.Connection:
-    """Open the database at `path`, creating the file and tables if needed."""
+    """Open the database at `path`, creating it or upgrading its schema if needed."""
     if str(path) != ":memory:":
         Path(path).parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row
-    conn.executescript(SCHEMA)
+    try:
+        migrations.migrate(conn)
+    except BaseException:
+        conn.close()
+        raise
     return conn
 
 

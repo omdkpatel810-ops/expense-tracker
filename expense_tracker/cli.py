@@ -156,7 +156,7 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         conn = db.connect(db_path)
-    except (sqlite3.Error, OSError) as error:
+    except (sqlite3.Error, OSError, RuntimeError) as error:
         print(f"error: couldn't open the database at {db_path}: {error}", file=sys.stderr)
         return 1
 
