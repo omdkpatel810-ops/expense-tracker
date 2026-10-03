@@ -3,6 +3,7 @@
     expense add 12.50 food "Lunch at Subway"
     expense list --month 2026-09
     expense categories
+    expense budget set food 300
 """
 
 from __future__ import annotations
@@ -68,7 +69,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--limit", type=positive_int, default=20, help="how many to show (default: 20)"
     )
 
-    commands.add_parser("categories", help="show the categories you've used")
+    commands.add_parser("categories", help="show your categories and their budgets")
+
+    budget = commands.add_parser("budget", help="set or show monthly budgets")
+    budget_actions = budget.add_subparsers(dest="budget_action", required=True, metavar="ACTION")
+    budget_set = budget_actions.add_parser("set", help="set a monthly limit for a category")
+    budget_set.add_argument("category", help="e.g. food")
+    budget_set.add_argument("amount", help="monthly limit, e.g. 300")
+    budget_actions.add_parser("list", help="show every monthly budget")
 
     return parser
 
@@ -119,11 +127,38 @@ def cmd_list(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
 
 
 def cmd_categories(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
-    counts = db.category_counts(conn)
-    if not counts:
-        print("No categories yet. They're created when you add an expense.")
+    summaries = db.category_summaries(conn)
+    if not summaries:
+        print("No categories yet. They're created when you add an expense or set a budget.")
         return 0
-    print_table(("Category", "Expenses"), [(name, str(n)) for name, n in counts], right_aligned={1})
+    rows = [
+        (
+            s.name,
+            str(s.expense_count),
+            "-" if s.monthly_limit_cents is None else format_cents(s.monthly_limit_cents),
+        )
+        for s in summaries
+    ]
+    print_table(("Category", "Expenses", "Monthly budget"), rows, right_aligned={1, 2})
+    return 0
+
+
+def cmd_budget(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
+    if args.budget_action == "set":
+        category = parse_category(args.category)
+        limit_cents = parse_amount(args.amount)
+        db.set_budget(conn, category, limit_cents)
+        print(f"Budget set: {category} · {format_cents(limit_cents)} per month")
+        return 0
+
+    budgets = db.list_budgets(conn)
+    if not budgets:
+        print("No budgets yet. Set one with: expense budget set food 300")
+        return 0
+    rows = [(name, format_cents(cents)) for name, cents in budgets]
+    print_table(("Category", "Monthly limit"), rows, right_aligned={1})
+    total = sum(cents for _, cents in budgets)
+    print(f"\nTotal budgeted: {format_cents(total)} per month")
     return 0
 
 
@@ -147,7 +182,12 @@ def print_table(headers, rows, right_aligned=frozenset()) -> None:
         print(format_row(row))
 
 
-COMMANDS = {"add": cmd_add, "list": cmd_list, "categories": cmd_categories}
+COMMANDS = {
+    "add": cmd_add,
+    "list": cmd_list,
+    "categories": cmd_categories,
+    "budget": cmd_budget,
+}
 
 
 def main(argv: list[str] | None = None) -> int:

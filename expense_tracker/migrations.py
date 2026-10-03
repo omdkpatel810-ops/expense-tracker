@@ -68,6 +68,18 @@ MIGRATIONS: list[list[str]] = [
         "CREATE INDEX idx_expenses_spent_on ON expenses (spent_on)",
         "CREATE INDEX idx_expenses_category_id ON expenses (category_id)",
     ],
+    # 3. A monthly spending limit per category. category_id is the primary key,
+    #    so a category can have at most one budget.
+    [
+        """
+        CREATE TABLE budgets (
+            category_id         INTEGER PRIMARY KEY
+                                REFERENCES categories (id) ON DELETE CASCADE,
+            monthly_limit_cents INTEGER NOT NULL CHECK (monthly_limit_cents > 0),
+            updated_at          TEXT    NOT NULL DEFAULT (datetime('now'))
+        )
+        """,
+    ],
 ]
 
 

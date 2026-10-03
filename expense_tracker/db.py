@@ -112,11 +112,51 @@ def list_expenses(
     ]
 
 
-def category_counts(conn: sqlite3.Connection) -> list[tuple[str, int]]:
-    """Return every category with how many expenses it has (including zero)."""
+@dataclass(frozen=True)
+class CategorySummary:
+    name: str
+    expense_count: int
+    monthly_limit_cents: int | None  # None when the category has no budget
+
+
+def category_summaries(conn: sqlite3.Connection) -> list[CategorySummary]:
+    """Return every category with its expense count and budget, if any."""
     rows = conn.execute(
-        "SELECT c.name, COUNT(e.id) AS n "
-        "FROM categories AS c LEFT JOIN expenses AS e ON e.category_id = c.id "
+        "SELECT c.name, COUNT(e.id) AS n, b.monthly_limit_cents "
+        "FROM categories AS c "
+        "LEFT JOIN expenses AS e ON e.category_id = c.id "
+        "LEFT JOIN budgets AS b ON b.category_id = c.id "
         "GROUP BY c.id ORDER BY c.name"
     ).fetchall()
-    return [(row["name"], row["n"]) for row in rows]
+    return [CategorySummary(row["name"], row["n"], row["monthly_limit_cents"]) for row in rows]
+
+
+def category_counts(conn: sqlite3.Connection) -> list[tuple[str, int]]:
+    """Return every category with how many expenses it has (including zero)."""
+    return [(s.name, s.expense_count) for s in category_summaries(conn)]
+
+
+def set_budget(conn: sqlite3.Connection, category: str, monthly_limit_cents: int) -> None:
+    """Set a category's monthly limit, replacing any existing one.
+
+    INSERT ... ON CONFLICT DO UPDATE (an "upsert") inserts the budget, or
+    updates it if the category already has one, in a single statement.
+    """
+    with conn:
+        category_id = _category_id(conn, category)
+        conn.execute(
+            "INSERT INTO budgets (category_id, monthly_limit_cents) VALUES (?, ?) "
+            "ON CONFLICT (category_id) DO UPDATE SET "
+            "monthly_limit_cents = excluded.monthly_limit_cents, updated_at = datetime('now')",
+            (category_id, monthly_limit_cents),
+        )
+
+
+def list_budgets(conn: sqlite3.Connection) -> list[tuple[str, int]]:
+    """Return (category, monthly limit in cents) for every budget, sorted by category."""
+    rows = conn.execute(
+        "SELECT c.name, b.monthly_limit_cents "
+        "FROM budgets AS b JOIN categories AS c ON c.id = b.category_id "
+        "ORDER BY c.name"
+    ).fetchall()
+    return [(row["name"], row["monthly_limit_cents"]) for row in rows]

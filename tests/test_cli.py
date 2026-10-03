@@ -94,9 +94,37 @@ def test_categories(run):
     run("add", "20", "Food")
     run("add", "30", "rent")
 
+    run("budget", "set", "rent", "1150")
+
     _, out, _ = run("categories")
     rows = [line.split() for line in out.splitlines()[2:]]
-    assert rows == [["food", "2"], ["rent", "1"]]
+    assert rows == [["food", "2", "-"], ["rent", "1", "$1,150.00"]]
+
+
+def test_budget_set_and_list(run):
+    code, out, _ = run("budget", "set", "Food", "300")
+    assert code == 0
+    assert out.strip() == "Budget set: food · $300.00 per month"
+
+    run("budget", "set", "transit", "113")
+    run("budget", "set", "food", "250")  # replaces the first food budget
+
+    _, out, _ = run("budget", "list")
+    lines = out.splitlines()
+    assert [line.split() for line in lines[2:4]] == [["food", "$250.00"], ["transit", "$113.00"]]
+    assert lines[-1] == "Total budgeted: $363.00 per month"
+
+
+def test_budget_list_when_empty(run):
+    _, out, _ = run("budget", "list")
+    assert "No budgets yet" in out
+
+
+def test_budget_rejects_bad_amount(run):
+    code, _, err = run("budget", "set", "food", "-20")
+
+    assert code == 2
+    assert "error:" in err
 
 
 def test_database_from_newer_app_gives_clear_error(tmp_path, capsys):

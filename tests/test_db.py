@@ -88,6 +88,38 @@ def test_database_rejects_badly_formatted_date(conn):
         )
 
 
+def test_set_budget_creates_the_category_if_needed(conn):
+    db.set_budget(conn, "travel", 50000)
+
+    assert db.list_budgets(conn) == [("travel", 50000)]
+    assert db.category_counts(conn) == [("travel", 0)]
+
+
+def test_setting_a_budget_again_replaces_it(conn):
+    db.set_budget(conn, "food", 30000)
+    db.set_budget(conn, "food", 25000)
+
+    assert db.list_budgets(conn) == [("food", 25000)]
+
+
+def test_database_rejects_zero_budget(conn):
+    with pytest.raises(sqlite3.IntegrityError):
+        db.set_budget(conn, "food", 0)
+    assert db.list_budgets(conn) == []
+
+
+def test_category_summaries_combine_counts_and_budgets(conn):
+    db.add_expense(conn, 100, "food", "", date(2026, 9, 1))
+    db.add_expense(conn, 100, "food", "", date(2026, 9, 2))
+    db.add_expense(conn, 100, "coffee", "", date(2026, 9, 2))
+    db.set_budget(conn, "food", 30000)
+
+    assert db.category_summaries(conn) == [
+        db.CategorySummary("coffee", 1, None),
+        db.CategorySummary("food", 2, 30000),
+    ]
+
+
 def test_data_is_saved_to_disk(tmp_path):
     path = tmp_path / "nested" / "expenses.db"
 
