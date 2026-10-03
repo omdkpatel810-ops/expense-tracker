@@ -25,6 +25,8 @@ Total for 5 expenses: $1,344.12
 - **Add expenses** with an amount, category, optional description and date (`today`, `yesterday` or `YYYY-MM-DD`)
 - **List expenses** newest first, filtered by month and/or category, with a running total
 - **Categories** are normalized, so `Food`, `food` and ` food ` are the same category
+- **Monthly budgets** per category, shown next to each category's expense count
+- **Automatic upgrades**: a database created by an older version is migrated on open, keeping every expense
 - **Clear errors** for bad input, like `error: Amount can have at most 2 decimal places, like 12.99.`
 
 ## Quick start
@@ -50,7 +52,21 @@ expense add 64.37 groceries "Superstore" --date 2026-08-28
 expense list                                         # latest 20
 expense list --month 2026-09                         # all of September
 expense list --month 2026-09 --category food --limit 50
+
+expense budget set food 300                          # $300 a month for food
+expense budget list
 expense categories
+```
+
+```text
+$ expense categories
+Category   Expenses  Monthly budget
+---------  --------  --------------
+coffee            1               -
+food              2         $300.00
+groceries         1               -
+rent              1       $1,150.00
+transit           1         $113.00
 ```
 
 Data is stored in `~/.expense_tracker/expenses.db`. Set `EXPENSE_DB=/path/to/file.db` or pass `--db` to use a different file.
@@ -59,29 +75,46 @@ Data is stored in `~/.expense_tracker/expenses.db`. Set `EXPENSE_DB=/path/to/fil
 
 ```text
 expense_tracker/
-  cli.py      reads command-line arguments, prints tables
-  parsing.py  checks categories, dates and months typed by the user
-  money.py    converts "12.50" to 1250 cents and back
-  db.py       the only module that runs SQL
-tests/        one test file per module (66 tests)
+  cli.py         reads command-line arguments, prints tables
+  parsing.py     checks categories, dates and months typed by the user
+  money.py       converts "12.50" to 1250 cents and back
+  db.py          the only module that runs SQL queries
+  migrations.py  every version of the database schema, in order
+tests/           one test file per module (83 tests)
 ```
 
 **Money is stored as integer cents.** Floats can't represent most decimal amounts exactly (`0.1 + 0.2 == 0.30000000000000004`), so totals drift as you add up many prices. Whole numbers of cents never drift.
 
-**The schema protects the data, not just the app.** `CHECK` constraints reject a zero or negative amount even if a bug slips past the input checks.
+**The schema is normalized.** Each category name is stored once, and expenses and budgets point to it by id with a foreign key. Foreign keys are switched on for every connection (SQLite leaves them off by default), and `CHECK` constraints reject a zero amount, a zero budget or a badly formatted date even if a bug slips past the input checks.
 
-```sql
-CREATE TABLE expenses (
-    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    amount_cents INTEGER NOT NULL CHECK (amount_cents > 0),
-    category     TEXT    NOT NULL CHECK (length(category) > 0),
-    description  TEXT    NOT NULL DEFAULT '',
-    spent_on     TEXT    NOT NULL,  -- ISO date, so text order = date order
-    created_at   TEXT    NOT NULL DEFAULT (datetime('now'))
-);
-CREATE INDEX idx_expenses_spent_on ON expenses (spent_on);
-CREATE INDEX idx_expenses_category ON expenses (category);
+```mermaid
+erDiagram
+    categories ||--o{ expenses : "has"
+    categories ||--o| budgets : "has at most one"
+    categories {
+        INTEGER id PK
+        TEXT name UK
+    }
+    expenses {
+        INTEGER id PK
+        INTEGER amount_cents "CHECK > 0"
+        INTEGER category_id FK
+        TEXT description
+        TEXT spent_on "YYYY-MM-DD, indexed"
+    }
+    budgets {
+        INTEGER category_id PK,FK
+        INTEGER monthly_limit_cents "CHECK > 0"
+    }
 ```
+
+**Schema changes are versioned migrations.** Each database file stores its schema version in SQLite's `PRAGMA user_version`. When the app opens a file, it runs every newer migration from [`migrations.py`](expense_tracker/migrations.py), each inside its own transaction, so an upgrade either applies completely or rolls back. A database from the first release (version 0, one `expenses` table with the category name on each row) is upgraded to version 3 with every expense, id and date kept. That upgrade is covered by a test that builds an old-format file and opens it.
+
+| Version | Change |
+|---|---|
+| 1 | `expenses` table with the category name stored on each row |
+| 2 | `categories` table; `expenses` rebuilt with a `category_id` foreign key |
+| 3 | `budgets` table, one monthly limit per category |
 
 **Month filters use a half-open range.** `--month 2026-09` becomes `spent_on >= '2026-09-01' AND spent_on < '2026-10-01'`, which is correct for every month length and lets SQLite use the date index.
 
@@ -98,7 +131,7 @@ Tests also run automatically on every push with GitHub Actions, on Python 3.10 a
 ## Roadmap
 
 - [x] Add, list and categorize expenses from the command line
+- [x] Normalized schema: categories table, budgets table, migrations
 - [ ] Delete and edit expenses
-- [ ] Normalized schema: categories table, budgets table, migrations
 - [ ] Monthly reports and budget alerts
 - [ ] Spending charts with matplotlib
