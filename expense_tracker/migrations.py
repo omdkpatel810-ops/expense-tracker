@@ -32,6 +32,42 @@ MIGRATIONS: list[list[str]] = [
         "CREATE INDEX IF NOT EXISTS idx_expenses_spent_on ON expenses (spent_on)",
         "CREATE INDEX IF NOT EXISTS idx_expenses_category ON expenses (category)",
     ],
+    # 2. Categories get their own table. Each name is stored once and every
+    #    expense points to it by id (a foreign key), so a category can be
+    #    renamed with one UPDATE and budgets can refer to it.
+    #    SQLite can't add a foreign key to an existing table, so the expenses
+    #    table is rebuilt: create the new shape, copy the rows, swap the names.
+    [
+        """
+        CREATE TABLE categories (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            name       TEXT    NOT NULL UNIQUE CHECK (length(name) > 0),
+            created_at TEXT    NOT NULL DEFAULT (datetime('now'))
+        )
+        """,
+        "INSERT INTO categories (name) SELECT DISTINCT category FROM expenses ORDER BY category",
+        """
+        CREATE TABLE expenses_new (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            amount_cents INTEGER NOT NULL CHECK (amount_cents > 0),
+            category_id  INTEGER NOT NULL REFERENCES categories (id) ON DELETE RESTRICT,
+            description  TEXT    NOT NULL DEFAULT '',
+            spent_on     TEXT    NOT NULL
+                         CHECK (spent_on GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'),
+            created_at   TEXT    NOT NULL DEFAULT (datetime('now'))
+        )
+        """,
+        """
+        INSERT INTO expenses_new (id, amount_cents, category_id, description, spent_on, created_at)
+        SELECT e.id, e.amount_cents, c.id, e.description, e.spent_on, e.created_at
+        FROM expenses AS e
+        JOIN categories AS c ON c.name = e.category
+        """,
+        "DROP TABLE expenses",
+        "ALTER TABLE expenses_new RENAME TO expenses",
+        "CREATE INDEX idx_expenses_spent_on ON expenses (spent_on)",
+        "CREATE INDEX idx_expenses_category_id ON expenses (category_id)",
+    ],
 ]
 
 

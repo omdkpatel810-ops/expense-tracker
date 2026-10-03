@@ -66,6 +66,28 @@ def test_category_counts(conn):
     assert db.category_counts(conn) == [("food", 2), ("rent", 1)]
 
 
+def test_each_category_name_is_stored_once(conn):
+    db.add_expense(conn, 100, "food", "", date(2026, 9, 1))
+    db.add_expense(conn, 200, "food", "", date(2026, 9, 2))
+
+    assert conn.execute("SELECT COUNT(*) FROM categories").fetchone()[0] == 1
+
+
+def test_database_rejects_unknown_category_id(conn):
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute(
+            "INSERT INTO expenses (amount_cents, category_id, spent_on) VALUES (100, 42, '2026-09-01')"
+        )
+
+
+def test_database_rejects_badly_formatted_date(conn):
+    db.add_expense(conn, 100, "food", "", date(2026, 9, 1))
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute(
+            "INSERT INTO expenses (amount_cents, category_id, spent_on) VALUES (100, 1, 'Sept 1')"
+        )
+
+
 def test_data_is_saved_to_disk(tmp_path):
     path = tmp_path / "nested" / "expenses.db"
 

@@ -29,6 +29,7 @@ def connect(path: Path | str) -> sqlite3.Connection:
         Path(path).parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")  # SQLite leaves foreign keys unchecked unless asked
     try:
         migrations.migrate(conn)
     except BaseException:
@@ -44,14 +45,22 @@ def add_expense(
     description: str,
     spent_on: date,
 ) -> int:
-    """Save one expense and return its new id."""
-    with conn:  # commits on success, rolls back on error
+    """Save one expense and return its new id. Creates the category if it's new."""
+    with conn:  # one transaction: commits on success, rolls back on error
+        category_id = _category_id(conn, category)
         cursor = conn.execute(
-            "INSERT INTO expenses (amount_cents, category, description, spent_on) "
+            "INSERT INTO expenses (amount_cents, category_id, description, spent_on) "
             "VALUES (?, ?, ?, ?)",
-            (amount_cents, category, description, spent_on.isoformat()),
+            (amount_cents, category_id, description, spent_on.isoformat()),
         )
     return cursor.lastrowid
+
+
+def _category_id(conn: sqlite3.Connection, name: str) -> int:
+    """Return the id for a category name, creating the category if it doesn't exist."""
+    conn.execute("INSERT OR IGNORE INTO categories (name) VALUES (?)", (name,))
+    row = conn.execute("SELECT id FROM categories WHERE name = ?", (name,)).fetchone()
+    return row["id"]
 
 
 def list_expenses(
@@ -70,19 +79,22 @@ def list_expenses(
     conditions: list[str] = []
     params: list[object] = []
     if category is not None:
-        conditions.append("category = ?")
+        conditions.append("c.name = ?")
         params.append(category)
     if start is not None:
-        conditions.append("spent_on >= ?")
+        conditions.append("e.spent_on >= ?")
         params.append(start.isoformat())
     if end is not None:
-        conditions.append("spent_on < ?")
+        conditions.append("e.spent_on < ?")
         params.append(end.isoformat())
 
-    sql = "SELECT id, amount_cents, category, description, spent_on FROM expenses"
+    sql = (
+        "SELECT e.id, e.amount_cents, c.name AS category, e.description, e.spent_on "
+        "FROM expenses AS e JOIN categories AS c ON c.id = e.category_id"
+    )
     if conditions:
         sql += " WHERE " + " AND ".join(conditions)
-    sql += " ORDER BY spent_on DESC, id DESC"
+    sql += " ORDER BY e.spent_on DESC, e.id DESC"
     if limit is not None:
         sql += " LIMIT ?"
         params.append(limit)
@@ -101,8 +113,10 @@ def list_expenses(
 
 
 def category_counts(conn: sqlite3.Connection) -> list[tuple[str, int]]:
-    """Return every category used so far with how many expenses it has."""
+    """Return every category with how many expenses it has (including zero)."""
     rows = conn.execute(
-        "SELECT category, COUNT(*) AS n FROM expenses GROUP BY category ORDER BY category"
+        "SELECT c.name, COUNT(e.id) AS n "
+        "FROM categories AS c LEFT JOIN expenses AS e ON e.category_id = c.id "
+        "GROUP BY c.id ORDER BY c.name"
     ).fetchall()
-    return [(row["category"], row["n"]) for row in rows]
+    return [(row["name"], row["n"]) for row in rows]
