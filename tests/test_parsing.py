@@ -2,7 +2,13 @@ from datetime import date
 
 import pytest
 
-from expense_tracker.parsing import parse_category, parse_date, parse_month
+from expense_tracker.parsing import (
+    month_label,
+    month_range,
+    parse_category,
+    parse_date,
+    parse_month,
+)
 
 TODAY = date(2026, 9, 30)
 
@@ -48,6 +54,15 @@ def test_parse_month_returns_half_open_range():
 
 def test_parse_month_rolls_over_the_year():
     assert parse_month("2026-12") == (date(2026, 12, 1), date(2027, 1, 1))
+
+
+def test_month_range_from_any_day():
+    assert month_range(date(2026, 10, 4)) == (date(2026, 10, 1), date(2026, 11, 1))
+    assert month_range(date(2026, 12, 31)) == (date(2026, 12, 1), date(2027, 1, 1))
+
+
+def test_month_label():
+    assert month_label(date(2026, 10, 4)) == "October 2026"
 
 
 @pytest.mark.parametrize("text", ["2026-13", "2026-00", "Sept", "2026-9", "26-09"])

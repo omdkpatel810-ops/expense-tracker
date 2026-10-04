@@ -120,6 +120,19 @@ def test_category_summaries_combine_counts_and_budgets(conn):
     ]
 
 
+def test_spending_by_category_sums_one_month(conn):
+    db.add_expense(conn, 1000, "food", "", date(2026, 9, 30))  # previous month
+    db.add_expense(conn, 1250, "food", "", date(2026, 10, 1))
+    db.add_expense(conn, 750, "food", "", date(2026, 10, 31))
+    db.add_expense(conn, 425, "coffee", "", date(2026, 10, 2))
+    db.add_expense(conn, 999, "food", "", date(2026, 11, 1))  # next month
+
+    october = (date(2026, 10, 1), date(2026, 11, 1))
+    assert db.spending_by_category(conn, *october) == {"food": 2000, "coffee": 425}
+    assert db.spending_by_category(conn, *october, category="coffee") == {"coffee": 425}
+    assert db.spending_by_category(conn, date(2027, 1, 1), date(2027, 2, 1)) == {}
+
+
 def test_data_is_saved_to_disk(tmp_path):
     path = tmp_path / "nested" / "expenses.db"
 

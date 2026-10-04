@@ -12,6 +12,10 @@ from datetime import date, timedelta
 MAX_CATEGORY_LENGTH = 30
 CATEGORY_PATTERN = re.compile(r"^[a-z0-9][a-z0-9 &-]*$")
 MONTH_PATTERN = re.compile(r"^(\d{4})-(\d{2})$")
+MONTH_NAMES = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December",
+]
 
 
 def parse_category(text: str) -> str:
@@ -59,7 +63,16 @@ def parse_month(text: str) -> tuple[date, date]:
     year, month = int(match.group(1)), int(match.group(2))
     if not 1 <= month <= 12:
         raise ValueError(f"'{text}' is not a month. Months go from 01 to 12.")
+    return month_range(date(year, month, 1))
 
-    start = date(year, month, 1)
-    end = date(year + 1, 1, 1) if month == 12 else date(year, month + 1, 1)
+
+def month_range(day: date) -> tuple[date, date]:
+    """Return (first day of day's month, first day of the next month)."""
+    start = day.replace(day=1)
+    end = date(start.year + 1, 1, 1) if start.month == 12 else date(start.year, start.month + 1, 1)
     return start, end
+
+
+def month_label(day: date) -> str:
+    """Format a date's month for people, like "October 2026"."""
+    return f"{MONTH_NAMES[day.month - 1]} {day.year}"

@@ -112,6 +112,26 @@ def list_expenses(
     ]
 
 
+def spending_by_category(
+    conn: sqlite3.Connection,
+    start: date,
+    end: date,
+    category: str | None = None,
+) -> dict[str, int]:
+    """Total cents spent per category from `start` (included) to `end` (excluded)."""
+    sql = (
+        "SELECT c.name, SUM(e.amount_cents) AS spent "
+        "FROM expenses AS e JOIN categories AS c ON c.id = e.category_id "
+        "WHERE e.spent_on >= ? AND e.spent_on < ?"
+    )
+    params: list[object] = [start.isoformat(), end.isoformat()]
+    if category is not None:
+        sql += " AND c.name = ?"
+        params.append(category)
+    sql += " GROUP BY c.id"
+    return {row["name"]: row["spent"] for row in conn.execute(sql, params)}
+
+
 @dataclass(frozen=True)
 class CategorySummary:
     name: str
