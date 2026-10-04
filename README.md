@@ -2,22 +2,30 @@
 
 ![tests](https://github.com/omdkpatel810-ops/expense-tracker/actions/workflows/tests.yml/badge.svg)
 
-Track your spending from the command line. Expenses are saved in a local SQLite database, so your data stays on your machine and survives restarts.
+Track your spending from the command line, set monthly budgets, and get warned before you overspend. Expenses are saved in a local SQLite database, so your data stays on your machine and survives restarts.
 
 ```text
-$ expense add 1150 rent "October rent"
-Added #1: $1,150.00 · rent · 2026-09-30 · October rent
+$ expense add 48.75 food "Costco"
+Added #8: $48.75 · food · 2026-10-04 · Costco
+! food is at 84% of its $300.00 budget for October 2026, $47.25 left.
 
-$ expense list
-ID  Date        Category      Amount  Description
---  ----------  ---------  ---------  ---------------
- 1  2026-09-30  rent       $1,150.00  October rent
- 4  2026-09-29  coffee         $4.25
- 2  2026-09-29  food          $12.50  Lunch at Subway
- 3  2026-09-15  transit      $113.00  U-Pass top-up
- 5  2026-08-28  groceries     $64.37  Superstore run
+$ expense report
+Spending report: October 2026
 
-Total for 5 expenses: $1,344.12
+Category      Spent     Budget     Left  Used  Status
+--------  ---------  ---------  -------  ----  --------------
+rent      $1,150.00  $1,150.00    $0.00  100%  limit reached
+food        $252.75    $300.00   $47.25   84%  close to limit
+transit     $113.00    $113.00    $0.00  100%  limit reached
+fun          $93.50     $80.00  -$13.50  116%  over budget
+coffee        $4.25          -        -     -  no budget
+
+Total spent: $1,613.50
+Budgeted categories: $1,609.25 of $1,643.00 (97%)
+
+Alerts
+  ! food is at 84% of its $300.00 budget for October 2026, $47.25 left.
+  ! fun is $13.50 over its $80.00 budget for October 2026 ($93.50 spent).
 ```
 
 ## Features
@@ -26,6 +34,8 @@ Total for 5 expenses: $1,344.12
 - **List expenses** newest first, filtered by month and/or category, with a running total
 - **Categories** are normalized, so `Food`, `food` and ` food ` are the same category
 - **Monthly budgets** per category, shown next to each category's expense count
+- **Monthly reports** of spending against each budget: money left, percent used and status
+- **Budget warnings** the moment an expense takes a category to 80% of its budget or over it
 - **Automatic upgrades**: a database created by an older version is migrated on open, keeping every expense
 - **Clear errors** for bad input, like `error: Amount can have at most 2 decimal places, like 12.99.`
 
@@ -56,9 +66,23 @@ expense list --month 2026-09 --category food --limit 50
 expense budget set food 300                          # $300 a month for food
 expense budget list
 expense categories
+
+expense report                                       # this month
+expense report --month 2026-09
 ```
 
 ```text
+$ expense list
+ID  Date        Category      Amount  Description
+--  ----------  ---------  ---------  ---------------
+ 1  2026-09-30  rent       $1,150.00  October rent
+ 4  2026-09-29  coffee         $4.25
+ 2  2026-09-29  food          $12.50  Lunch at Subway
+ 3  2026-09-15  transit      $113.00  U-Pass top-up
+ 5  2026-08-28  groceries     $64.37  Superstore run
+
+Total for 5 expenses: $1,344.12
+
 $ expense categories
 Category   Expenses  Monthly budget
 ---------  --------  --------------
@@ -80,7 +104,8 @@ expense_tracker/
   money.py       converts "12.50" to 1250 cents and back
   db.py          the only module that runs SQL queries
   migrations.py  every version of the database schema, in order
-tests/           one test file per module (83 tests)
+  reports.py     budget status and alert rules (no SQL, no printing)
+tests/           one test file per module (112 tests)
 ```
 
 **Money is stored as integer cents.** Floats can't represent most decimal amounts exactly (`0.1 + 0.2 == 0.30000000000000004`), so totals drift as you add up many prices. Whole numbers of cents never drift.
@@ -120,6 +145,15 @@ erDiagram
 
 **All queries use `?` parameters**, never string formatting, which prevents SQL injection.
 
+**Budget rules live in one pure module.** [`reports.py`](expense_tracker/reports.py) takes totals in cents and returns each category's status, with no database or printing code, so every boundary is tested directly. Percentages use integer math (`spent * 100 >= limit * 80`), so there's no float rounding right at the 80% line.
+
+| Used | Status | Alert? |
+|---|---|---|
+| under 80% | on track | no |
+| 80% to 99% | close to limit | yes |
+| exactly 100% | limit reached | no, because fixed bills like rent are budgeted at their exact amount |
+| over 100% | over budget | yes |
+
 ## Running the tests
 
 ```bash
@@ -132,6 +166,6 @@ Tests also run automatically on every push with GitHub Actions, on Python 3.10 a
 
 - [x] Add, list and categorize expenses from the command line
 - [x] Normalized schema: categories table, budgets table, migrations
+- [x] Monthly reports and budget alerts
 - [ ] Delete and edit expenses
-- [ ] Monthly reports and budget alerts
 - [ ] Spending charts with matplotlib
