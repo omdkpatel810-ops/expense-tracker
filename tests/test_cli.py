@@ -152,8 +152,8 @@ def test_report_shows_budgets_totals_and_alerts(run):
     ]
     assert "Total spent: $1,400.25" in out
     assert "Budgeted categories: $1,396.00 of $1,950.00 (71%)" in out
-    assert "  ! rent has used all of its $1,150.00 budget for October 2026." in lines
     assert "  ! food is at 82% of its $300.00 budget for October 2026, $54.00 left." in lines
+    assert not any(line.startswith("  ! rent") for line in lines)  # exactly on budget is fine
 
 
 def test_report_without_alerts(run):
@@ -205,6 +205,13 @@ def test_add_warns_when_over_budget(run):
     _, out, _ = run("add", "12.40", "food", "--date", "2026-10-03")
 
     assert "! food is $12.40 over its $300.00 budget for October 2026 ($312.40 spent)." in out
+
+
+def test_add_does_not_warn_when_landing_exactly_on_budget(run):
+    run("budget", "set", "rent", "1150")
+    _, out, _ = run("add", "1150", "rent", "--date", "2026-10-01")
+
+    assert "!" not in out
 
 
 def test_add_checks_the_budget_for_the_expense_month(run):

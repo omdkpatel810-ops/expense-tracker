@@ -49,7 +49,7 @@ def test_left_is_negative_when_over():
 
 @pytest.mark.parametrize(
     "spent, alert",
-    [(23999, False), (24000, True), (30000, True), (30001, True)],
+    [(23999, False), (24000, True), (29999, True), (30000, False), (30001, True)],
 )
 def test_needs_alert(spent, alert):
     assert CategoryReport("food", spent, BUDGET).needs_alert is alert

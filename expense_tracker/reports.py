@@ -20,7 +20,10 @@ LIMIT_REACHED = "limit reached"
 OVER = "over budget"
 NO_BUDGET = "no budget"
 
-ALERT_STATUSES = (OVER, LIMIT_REACHED, CLOSE)
+# Landing exactly on the limit isn't an alert: fixed bills like rent are
+# budgeted at their exact amount, and warning about them every month
+# would teach people to ignore warnings.
+ALERT_STATUSES = (OVER, CLOSE)
 
 
 @dataclass(frozen=True)
