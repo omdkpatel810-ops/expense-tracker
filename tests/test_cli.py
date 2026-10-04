@@ -127,6 +127,94 @@ def test_budget_rejects_bad_amount(run):
     assert "error:" in err
 
 
+def test_report_shows_budgets_totals_and_alerts(run):
+    run("budget", "set", "food", "300")
+    run("budget", "set", "rent", "1150")
+    run("budget", "set", "travel", "500")
+    run("add", "1150", "rent", "October rent", "--date", "2026-10-01")
+    run("add", "200", "food", "Groceries", "--date", "2026-10-02")
+    run("add", "46", "food", "Dinner out", "--date", "2026-10-03")
+    run("add", "4.25", "coffee", "--date", "2026-10-03")
+    run("add", "999", "food", "Last month", "--date", "2026-09-30")
+
+    code, out, _ = run("report", "--month", "2026-10")
+    lines = out.splitlines()
+
+    assert code == 0
+    assert lines[0] == "Spending report: October 2026"
+    assert lines[2].split() == ["Category", "Spent", "Budget", "Left", "Used", "Status"]
+    rows = [line.split(maxsplit=5) for line in lines[4:8]]
+    assert rows == [
+        ["rent", "$1,150.00", "$1,150.00", "$0.00", "100%", "limit reached"],
+        ["food", "$246.00", "$300.00", "$54.00", "82%", "close to limit"],
+        ["coffee", "$4.25", "-", "-", "-", "no budget"],
+        ["travel", "$0.00", "$500.00", "$500.00", "0%", "on track"],
+    ]
+    assert "Total spent: $1,400.25" in out
+    assert "Budgeted categories: $1,396.00 of $1,950.00 (71%)" in out
+    assert "  ! rent has used all of its $1,150.00 budget for October 2026." in lines
+    assert "  ! food is at 82% of its $300.00 budget for October 2026, $54.00 left." in lines
+
+
+def test_report_without_alerts(run):
+    run("budget", "set", "food", "300")
+    run("add", "20", "food", "--date", "2026-10-02")
+
+    _, out, _ = run("report", "--month", "2026-10")
+
+    assert "No alerts. Every budget is under 80%." in out
+
+
+def test_report_defaults_to_this_month(run):
+    run("add", "7", "coffee")
+
+    _, out, _ = run("report")
+
+    assert out.splitlines()[0] == "Spending report: " + date.today().strftime("%B %Y")
+    assert "coffee" in out
+
+
+def test_report_when_nothing_to_show(run):
+    code, out, _ = run("report", "--month", "2026-10")
+
+    assert code == 0
+    assert "Nothing to report for October 2026" in out
+
+
+def test_report_rejects_bad_month(run):
+    code, _, err = run("report", "--month", "Oct")
+
+    assert code == 2
+    assert "YYYY-MM" in err
+
+
+def test_add_warns_when_category_gets_close_to_budget(run):
+    run("budget", "set", "food", "300")
+    _, quiet, _ = run("add", "200", "food", "--date", "2026-10-02")
+    _, warned, _ = run("add", "46", "food", "--date", "2026-10-03")
+
+    assert "!" not in quiet
+    assert warned.splitlines()[1] == (
+        "! food is at 82% of its $300.00 budget for October 2026, $54.00 left."
+    )
+
+
+def test_add_warns_when_over_budget(run):
+    run("budget", "set", "food", "300")
+    run("add", "300", "food", "--date", "2026-10-02")
+    _, out, _ = run("add", "12.40", "food", "--date", "2026-10-03")
+
+    assert "! food is $12.40 over its $300.00 budget for October 2026 ($312.40 spent)." in out
+
+
+def test_add_checks_the_budget_for_the_expense_month(run):
+    run("budget", "set", "food", "300")
+    run("add", "290", "food", "--date", "2026-09-15")
+    _, out, _ = run("add", "5", "food", "--date", "2026-10-01")  # new month, fresh budget
+
+    assert "!" not in out
+
+
 def test_database_from_newer_app_gives_clear_error(tmp_path, capsys):
     import sqlite3
 

@@ -4,6 +4,7 @@
     expense list --month 2026-09
     expense categories
     expense budget set food 300
+    expense report --month 2026-10
 """
 
 from __future__ import annotations
@@ -12,11 +13,18 @@ import argparse
 import os
 import sqlite3
 import sys
+from datetime import date
 from pathlib import Path
 
-from expense_tracker import db
+from expense_tracker import db, reports
 from expense_tracker.money import format_cents, parse_amount
-from expense_tracker.parsing import parse_category, parse_date, parse_month
+from expense_tracker.parsing import (
+    month_label,
+    month_range,
+    parse_category,
+    parse_date,
+    parse_month,
+)
 
 MAX_DESCRIPTION_LENGTH = 200
 DESCRIPTION_COLUMN_WIDTH = 40
@@ -78,6 +86,9 @@ def build_parser() -> argparse.ArgumentParser:
     budget_set.add_argument("amount", help="monthly limit, e.g. 300")
     budget_actions.add_parser("list", help="show every monthly budget")
 
+    report = commands.add_parser("report", help="a month's spending against your budgets")
+    report.add_argument("--month", help="month to report on, as YYYY-MM (default: this month)")
+
     return parser
 
 
@@ -95,7 +106,20 @@ def cmd_add(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
     if description:
         details.append(description)
     print(f"Added #{new_id}: " + " · ".join(details))
+    warn_if_over_budget(conn, category, spent_on)
     return 0
+
+
+def warn_if_over_budget(conn: sqlite3.Connection, category: str, day: date) -> None:
+    """After an expense is added, warn if its category is now close to or over budget."""
+    limit_cents = dict(db.list_budgets(conn)).get(category)
+    if limit_cents is None:
+        return
+    start, end = month_range(day)
+    spent_cents = db.spending_by_category(conn, start, end, category=category).get(category, 0)
+    row = reports.CategoryReport(category, spent_cents, limit_cents)
+    if row.needs_alert:
+        print("! " + reports.alert_message(row, month_label(start)))
 
 
 def cmd_list(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
@@ -182,11 +206,66 @@ def print_table(headers, rows, right_aligned=frozenset()) -> None:
         print(format_row(row))
 
 
+def cmd_report(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
+    start, end = parse_month(args.month) if args.month else month_range(date.today())
+    label = month_label(start)
+
+    rows = reports.build_report(
+        db.spending_by_category(conn, start, end),
+        dict(db.list_budgets(conn)),
+    )
+    if not rows:
+        print(f"Nothing to report for {label}: no spending and no budgets.")
+        print("Set a budget with: expense budget set food 300")
+        return 0
+
+    def money_or_dash(cents: int | None) -> str:
+        return "-" if cents is None else format_cents(cents)
+
+    table = [
+        (
+            row.category,
+            format_cents(row.spent_cents),
+            money_or_dash(row.limit_cents),
+            money_or_dash(row.left_cents),
+            "-" if row.percent_used is None else f"{row.percent_used}%",
+            row.status,
+        )
+        for row in rows
+    ]
+    print(f"Spending report: {label}\n")
+    print_table(
+        ("Category", "Spent", "Budget", "Left", "Used", "Status"),
+        table,
+        right_aligned={1, 2, 3, 4},
+    )
+
+    print(f"\nTotal spent: {format_cents(sum(row.spent_cents for row in rows))}")
+    budgeted = [row for row in rows if row.limit_cents is not None]
+    if budgeted:
+        spent = sum(row.spent_cents for row in budgeted)
+        limit = sum(row.limit_cents for row in budgeted)
+        print(
+            f"Budgeted categories: {format_cents(spent)} of {format_cents(limit)} "
+            f"({spent * 100 // limit}%)"
+        )
+
+    alerts = [row for row in rows if row.needs_alert]
+    if alerts:
+        print("\nAlerts")
+        for row in alerts:
+            print("  ! " + reports.alert_message(row, label))
+    elif budgeted:
+        print(f"\nNo alerts. Every budget is under {reports.WARN_AT_PERCENT}%.")
+    return 0
+
+
 COMMANDS = {
     "add": cmd_add,
     "list": cmd_list,
     "categories": cmd_categories,
     "budget": cmd_budget,
+    "report": cmd_report,
 }
 
 
