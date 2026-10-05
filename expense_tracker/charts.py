@@ -105,20 +105,30 @@ def trend_chart(
     totals_cents: list[int],
     category: str | None = None,
     last_month_in_progress: bool = False,
+    budget_cents: int | None = None,
 ) -> Figure:
-    """One column per month. Only the latest month and the highest month are labeled."""
+    """One column per month. Only the latest month and the highest month are labeled.
+
+    With `budget_cents`, a line marks the category's current monthly budget,
+    so months that went over stand out.
+    """
     if len(months) != len(totals_cents) or not months:
         raise ValueError("months and totals must be the same, non-empty length")
 
     fig, ax = _new_chart(width=8, height=4.2)
     what = f"Monthly spending on {category}" if category else "Monthly spending"
-    span = f"{month_label(months[0])} to {month_label(months[-1])}"
-    note = f" · {month_label(months[-1])} is still in progress" if last_month_in_progress else ""
-    _title(ax, what, span + note)
+    notes = [f"{month_label(months[0])} to {month_label(months[-1])}"]
+    if last_month_in_progress:
+        notes.append(f"{month_label(months[-1])} is still in progress")
+    if budget_cents is not None:
+        notes.append(f"Line marks the current budget of {format_cents(budget_cents)}")
+    _title(ax, what, " · ".join(notes))
 
     values = [cents / 100 for cents in totals_cents]
     xs = list(range(len(months)))
     ax.bar(xs, values, width=0.24, color=SERIES, zorder=2)  # thin columns, air between them
+    if budget_cents is not None:
+        ax.axhline(budget_cents / 100, color=INK_SECONDARY, linewidth=1.2, zorder=3)
 
     peak = max(range(len(values)), key=lambda i: values[i])
     for i in sorted({peak, len(values) - 1}):
@@ -140,7 +150,8 @@ def trend_chart(
     ax.set_xticks(xs, labels=[_month_tick(m, first=(i == 0)) for i, m in enumerate(months)])
     ax.yaxis.set_major_formatter(dollars)
     ax.yaxis.set_major_locator(MaxNLocator(nbins=5, steps=[1, 2, 2.5, 5, 10]))
-    ax.set_ylim(0, max(max(values), 1) * 1.18)  # headroom for the value labels
+    top = max(max(values), (budget_cents or 0) / 100, 1)
+    ax.set_ylim(0, top * 1.18)  # headroom for the value labels
     ax.set_xlim(-0.6, len(months) - 0.4)
     _style_axes(ax, value_axis="y")
     return fig

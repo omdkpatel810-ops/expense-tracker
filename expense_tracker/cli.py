@@ -310,7 +310,10 @@ def cmd_chart(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
             what = f"{category} spending" if category else "spending"
             print(f"No {what} between {span}, so there's nothing to chart.")
             return 0
-        figure = charts.trend_chart(months, values, category, last_month_in_progress=True)
+        budget = dict(db.list_budgets(conn)).get(category) if category else None
+        figure = charts.trend_chart(
+            months, values, category, last_month_in_progress=True, budget_cents=budget
+        )
         slug = f"-{re.sub(r'[^a-z0-9]+', '-', category).strip('-')}" if category else ""
         path = args.output or Path(f"trend{slug}-{months[0]:%Y-%m}-to-{months[-1]:%Y-%m}.png")
 

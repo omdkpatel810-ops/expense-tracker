@@ -98,6 +98,27 @@ def test_trend_chart_title_names_the_category():
     assert ax.get_title(loc="left") == "Monthly spending on food"
 
 
+def test_trend_chart_draws_the_budget_line():
+    months = [date(2026, m, 1) for m in range(8, 11)]
+    ax = charts.trend_chart(months, [34867, 33655, 7508], category="food", budget_cents=30000).axes[0]
+
+    [line] = list(ax.lines)
+    assert list(line.get_ydata()) == [300.0, 300.0]
+    assert any("Line marks the current budget of $300.00" in t.get_text() for t in ax.texts)
+
+
+def test_trend_chart_keeps_a_high_budget_line_on_screen():
+    ax = charts.trend_chart([date(2026, 10, 1)], [5000], budget_cents=50000).axes[0]
+
+    assert ax.get_ylim()[1] > 500
+
+
+def test_trend_chart_without_budget_has_no_line():
+    ax = charts.trend_chart([date(2026, 10, 1)], [5000], category="coffee").axes[0]
+
+    assert len(ax.lines) == 0
+
+
 def test_dollar_signs_are_not_read_as_math(october_rows):
     ax = charts.budget_chart(october_rows, "October 2026").axes[0]
 
