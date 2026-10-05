@@ -222,6 +222,94 @@ def test_add_checks_the_budget_for_the_expense_month(run):
     assert "!" not in out
 
 
+PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+
+
+def months_ago(n):
+    """A date n months before today, on the 1st (always a valid date)."""
+    today = date.today()
+    index = today.year * 12 + today.month - 1 - n
+    return date(index // 12, index % 12 + 1, 1)
+
+
+def test_chart_budget_saves_png(run, tmp_path):
+    run("budget", "set", "food", "300")
+    run("add", "250", "food", "--date", "2026-10-02")
+    out_file = tmp_path / "charts" / "october.png"
+
+    code, out, _ = run("chart", "budget", "--month", "2026-10", "--output", str(out_file))
+
+    assert code == 0
+    assert out.strip() == f"Saved chart to {out_file}"
+    assert out_file.read_bytes().startswith(PNG_SIGNATURE)
+
+
+def test_chart_budget_default_file_name(run, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    run("add", "12", "food", "--date", "2026-10-02")
+
+    _, out, _ = run("chart", "budget", "--month", "2026-10")
+
+    assert out.strip() == "Saved chart to budget-2026-10.png"
+    assert (tmp_path / "budget-2026-10.png").exists()
+
+
+def test_chart_budget_with_nothing_to_show(run, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    code, out, _ = run("chart", "budget", "--month", "2026-10")
+
+    assert code == 0
+    assert "Nothing to chart for October 2026" in out
+    assert list(tmp_path.glob("*.png")) == []
+
+
+def test_chart_trend_default_file_name(run, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    run("add", "100", "food", "--date", months_ago(2).isoformat())
+    run("add", "50", "food")
+
+    code, out, _ = run("chart", "trend", "--months", "3")
+
+    expected = f"trend-{months_ago(2):%Y-%m}-to-{date.today():%Y-%m}.png"
+    assert code == 0
+    assert out.strip() == f"Saved chart to {expected}"
+    assert (tmp_path / expected).read_bytes().startswith(PNG_SIGNATURE)
+
+
+def test_chart_trend_for_one_category(run, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    run("add", "40", "Eating Out")
+
+    _, out, _ = run("chart", "trend", "--category", "eating out")
+
+    assert out.strip().startswith("Saved chart to trend-eating-out-")
+
+
+def test_chart_trend_with_no_spending(run, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    run("add", "40", "food")
+
+    code, out, _ = run("chart", "trend", "--category", "travel")
+
+    assert code == 0
+    assert "No travel spending between" in out
+    assert list(tmp_path.glob("*.png")) == []
+
+
+def test_chart_rejects_unknown_file_type(run, tmp_path):
+    code, _, err = run("chart", "budget", "--output", str(tmp_path / "chart.jpg"))
+
+    assert code == 2
+    assert ".png, .svg or .pdf" in err
+
+
+def test_chart_trend_rejects_too_many_months(run):
+    code, _, err = run("chart", "trend", "--months", "120")
+
+    assert code == 2
+    assert "at most 36" in err
+
+
 def test_database_from_newer_app_gives_clear_error(tmp_path, capsys):
     import sqlite3
 

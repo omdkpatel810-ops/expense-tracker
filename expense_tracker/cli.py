@@ -5,12 +5,15 @@
     expense categories
     expense budget set food 300
     expense report --month 2026-10
+    expense chart budget
+    expense chart trend --months 12
 """
 
 from __future__ import annotations
 
 import argparse
 import os
+import re
 import sqlite3
 import sys
 from datetime import date
@@ -21,6 +24,7 @@ from expense_tracker.money import format_cents, parse_amount
 from expense_tracker.parsing import (
     month_label,
     month_range,
+    months_back,
     parse_category,
     parse_date,
     parse_month,
@@ -88,6 +92,18 @@ def build_parser() -> argparse.ArgumentParser:
 
     report = commands.add_parser("report", help="a month's spending against your budgets")
     report.add_argument("--month", help="month to report on, as YYYY-MM (default: this month)")
+
+    chart = commands.add_parser("chart", help="save a spending chart as an image")
+    chart_kinds = chart.add_subparsers(dest="chart_kind", required=True, metavar="KIND")
+    budget_chart = chart_kinds.add_parser("budget", help="one month's spending against each budget")
+    budget_chart.add_argument("--month", help="YYYY-MM (default: this month)")
+    budget_chart.add_argument("--output", type=Path, help="file to save (.png, .svg or .pdf)")
+    trend_chart = chart_kinds.add_parser("trend", help="total spending for each recent month")
+    trend_chart.add_argument(
+        "--months", type=positive_int, default=6, help="how many months, up to 36 (default: 6)"
+    )
+    trend_chart.add_argument("--category", help="only count this category")
+    trend_chart.add_argument("--output", type=Path, help="file to save (.png, .svg or .pdf)")
 
     return parser
 
@@ -260,12 +276,56 @@ def cmd_report(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
     return 0
 
 
+CHART_FORMATS = {".png", ".svg", ".pdf"}
+MAX_TREND_MONTHS = 36
+
+
+def cmd_chart(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
+    if args.output is not None and args.output.suffix.lower() not in CHART_FORMATS:
+        raise ValueError("Use a .png, .svg or .pdf file name for --output.")
+
+    # matplotlib takes a moment to import, so it's only loaded when drawing a chart.
+    from expense_tracker import charts
+
+    if args.chart_kind == "budget":
+        start, end = parse_month(args.month) if args.month else month_range(date.today())
+        rows = reports.build_report(
+            db.spending_by_category(conn, start, end),
+            dict(db.list_budgets(conn)),
+        )
+        if not rows:
+            print(f"Nothing to chart for {month_label(start)}: no spending and no budgets.")
+            return 0
+        figure = charts.budget_chart(rows, month_label(start))
+        path = args.output or Path(f"budget-{start:%Y-%m}.png")
+    else:
+        if args.months > MAX_TREND_MONTHS:
+            raise ValueError(f"--months can be at most {MAX_TREND_MONTHS}.")
+        category = parse_category(args.category) if args.category else None
+        months = months_back(date.today(), args.months)
+        totals = db.monthly_totals(conn, months[0], month_range(months[-1])[1], category=category)
+        values = [totals.get(f"{month:%Y-%m}", 0) for month in months]
+        span = f"{month_label(months[0])} and {month_label(months[-1])}"
+        if not any(values):
+            what = f"{category} spending" if category else "spending"
+            print(f"No {what} between {span}, so there's nothing to chart.")
+            return 0
+        figure = charts.trend_chart(months, values, category, last_month_in_progress=True)
+        slug = f"-{re.sub(r'[^a-z0-9]+', '-', category).strip('-')}" if category else ""
+        path = args.output or Path(f"trend{slug}-{months[0]:%Y-%m}-to-{months[-1]:%Y-%m}.png")
+
+    charts.save(figure, path)
+    print(f"Saved chart to {path}")
+    return 0
+
+
 COMMANDS = {
     "add": cmd_add,
     "list": cmd_list,
     "categories": cmd_categories,
     "budget": cmd_budget,
     "report": cmd_report,
+    "chart": cmd_chart,
 }
 
 
