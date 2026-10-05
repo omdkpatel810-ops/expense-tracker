@@ -28,6 +28,20 @@ Alerts
   ! fun is $13.50 over its $80.00 budget for October 2026 ($93.50 spent).
 ```
 
+And save it as a chart:
+
+```bash
+expense chart budget --month 2026-09
+```
+
+![Spending vs budget for September 2026: rent, transit and phone exactly on budget, food over at 112%, fun close to its limit at 88%, coffee with no budget](docs/budget-chart.png)
+
+```bash
+expense chart trend --category food
+```
+
+![Monthly food spending from May to October 2026 against a $300 budget line: four of the five full months went over](docs/food-trend-chart.png)
+
 ## Features
 
 - **Add expenses** with an amount, category, optional description and date (`today`, `yesterday` or `YYYY-MM-DD`)
@@ -36,6 +50,7 @@ Alerts
 - **Monthly budgets** per category, shown next to each category's expense count
 - **Monthly reports** of spending against each budget: money left, percent used and status
 - **Budget warnings** the moment an expense takes a category to 80% of its budget or over it
+- **Charts** saved as PNG, SVG or PDF: spending against each budget for a month, and monthly totals over time
 - **Automatic upgrades**: a database created by an older version is migrated on open, keeping every expense
 - **Clear errors** for bad input, like `error: Amount can have at most 2 decimal places, like 12.99.`
 
@@ -69,7 +84,14 @@ expense categories
 
 expense report                                       # this month
 expense report --month 2026-09
+
+expense chart budget                                 # saves budget-2026-10.png
+expense chart budget --month 2026-09 --output sept.pdf
+expense chart trend                                  # last 6 months, all spending
+expense chart trend --months 12 --category food      # with the food budget line
 ```
+
+![Total monthly spending from May to October 2026, labeled at the highest month and the month in progress](docs/trend-chart.png)
 
 ```text
 $ expense list
@@ -105,7 +127,8 @@ expense_tracker/
   db.py          the only module that runs SQL queries
   migrations.py  every version of the database schema, in order
   reports.py     budget status and alert rules (no SQL, no printing)
-tests/           one test file per module (112 tests)
+  charts.py      draws the charts with matplotlib
+tests/           one test file per module (135 tests)
 ```
 
 **Money is stored as integer cents.** Floats can't represent most decimal amounts exactly (`0.1 + 0.2 == 0.30000000000000004`), so totals drift as you add up many prices. Whole numbers of cents never drift.
@@ -154,6 +177,8 @@ erDiagram
 | exactly 100% | limit reached | no, because fixed bills like rent are budgeted at their exact amount |
 | over 100% | over budget | yes |
 
+**Charts follow a few fixed design rules.** One series color, with amber and red reserved for "close to limit" and "over budget" and always paired with a text label, so color is never the only signal. Thin bars, hairline gridlines, and labels only where they matter (the peak and the latest month on trend charts). End-of-bar labels are measured with matplotlib's renderer and the axis is widened until they fit, so nothing is cut off. Charts are drawn on `matplotlib.figure.Figure` directly instead of `pyplot`, so there's no global state or GUI backend, and matplotlib is imported only when a chart is drawn, so the other commands start in about 0.06 s.
+
 ## Running the tests
 
 ```bash
@@ -167,5 +192,5 @@ Tests also run automatically on every push with GitHub Actions, on Python 3.10 a
 - [x] Add, list and categorize expenses from the command line
 - [x] Normalized schema: categories table, budgets table, migrations
 - [x] Monthly reports and budget alerts
+- [x] Spending charts with matplotlib
 - [ ] Delete and edit expenses
-- [ ] Spending charts with matplotlib
