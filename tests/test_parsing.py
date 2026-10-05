@@ -5,6 +5,7 @@ import pytest
 from expense_tracker.parsing import (
     month_label,
     month_range,
+    months_back,
     parse_category,
     parse_date,
     parse_month,
@@ -59,6 +60,15 @@ def test_parse_month_rolls_over_the_year():
 def test_month_range_from_any_day():
     assert month_range(date(2026, 10, 4)) == (date(2026, 10, 1), date(2026, 11, 1))
     assert month_range(date(2026, 12, 31)) == (date(2026, 12, 1), date(2027, 1, 1))
+
+
+def test_months_back_crosses_the_year():
+    assert months_back(date(2027, 2, 14), 4) == [
+        date(2026, 11, 1),
+        date(2026, 12, 1),
+        date(2027, 1, 1),
+        date(2027, 2, 1),
+    ]
 
 
 def test_month_label():

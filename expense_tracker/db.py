@@ -132,6 +132,29 @@ def spending_by_category(
     return {row["name"]: row["spent"] for row in conn.execute(sql, params)}
 
 
+def monthly_totals(
+    conn: sqlite3.Connection,
+    start: date,
+    end: date,
+    category: str | None = None,
+) -> dict[str, int]:
+    """Total cents spent per month, keyed "YYYY-MM", from `start` up to (not including) `end`.
+
+    Months with no spending are simply missing; the caller fills them with 0.
+    """
+    sql = (
+        "SELECT substr(e.spent_on, 1, 7) AS month, SUM(e.amount_cents) AS spent "
+        "FROM expenses AS e JOIN categories AS c ON c.id = e.category_id "
+        "WHERE e.spent_on >= ? AND e.spent_on < ?"
+    )
+    params: list[object] = [start.isoformat(), end.isoformat()]
+    if category is not None:
+        sql += " AND c.name = ?"
+        params.append(category)
+    sql += " GROUP BY month"
+    return {row["month"]: row["spent"] for row in conn.execute(sql, params)}
+
+
 @dataclass(frozen=True)
 class CategorySummary:
     name: str

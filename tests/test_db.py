@@ -133,6 +133,17 @@ def test_spending_by_category_sums_one_month(conn):
     assert db.spending_by_category(conn, date(2027, 1, 1), date(2027, 2, 1)) == {}
 
 
+def test_monthly_totals(conn):
+    db.add_expense(conn, 1000, "food", "", date(2026, 8, 31))
+    db.add_expense(conn, 2000, "food", "", date(2026, 9, 1))
+    db.add_expense(conn, 500, "rent", "", date(2026, 9, 30))
+    db.add_expense(conn, 300, "food", "", date(2026, 10, 2))
+
+    span = (date(2026, 8, 1), date(2026, 11, 1))
+    assert db.monthly_totals(conn, *span) == {"2026-08": 1000, "2026-09": 2500, "2026-10": 300}
+    assert db.monthly_totals(conn, *span, category="rent") == {"2026-09": 500}
+
+
 def test_data_is_saved_to_disk(tmp_path):
     path = tmp_path / "nested" / "expenses.db"
 

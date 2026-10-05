@@ -9,6 +9,7 @@ description = "Track your spending from the command line, stored in SQLite."
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [{ name = "Om Patel" }]
+dependencies = ["matplotlib>=3.7"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]

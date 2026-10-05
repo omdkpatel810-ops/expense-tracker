@@ -73,6 +73,15 @@ def month_range(day: date) -> tuple[date, date]:
     return start, end
 
 
+def months_back(day: date, count: int) -> list[date]:
+    """First days of the `count` months ending with day's month, oldest first.
+
+    months_back(2026-10-05, 3) -> [2026-08-01, 2026-09-01, 2026-10-01]
+    """
+    index = day.year * 12 + (day.month - 1)  # months since year 0, so wrapping years is easy
+    return [date(i // 12, i % 12 + 1, 1) for i in range(index - count + 1, index + 1)]
+
+
 def month_label(day: date) -> str:
     """Format a date's month for people, like "October 2026"."""
     return f"{MONTH_NAMES[day.month - 1]} {day.year}"
