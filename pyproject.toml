@@ -4,15 +4,19 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "expense-tracker"
-version = "0.1.0"
-description = "Track your spending from the command line, stored in SQLite."
+version = "1.0.0"
+description = "Track spending from the command line with monthly budgets, alerts and charts, stored in SQLite."
 readme = "README.md"
+license = { file = "LICENSE" }
 requires-python = ">=3.10"
 authors = [{ name = "Om Patel" }]
 dependencies = ["matplotlib>=3.7"]
 
 [project.optional-dependencies]
-dev = ["pytest>=8"]
+dev = ["pytest>=8", "pytest-cov>=5"]
+
+[project.urls]
+Repository = "https://github.com/omdkpatel810-ops/expense-tracker"
 
 [project.scripts]
 expense = "expense_tracker.cli:main"
@@ -23,3 +27,11 @@ packages = ["expense_tracker"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+
+[tool.coverage.run]
+source = ["expense_tracker"]
+omit = ["expense_tracker/__main__.py"]
+
+[tool.coverage.report]
+show_missing = true
+fail_under = 95
