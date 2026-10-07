@@ -119,6 +119,12 @@ def test_trend_chart_without_budget_has_no_line():
     assert len(ax.lines) == 0
 
 
+@pytest.mark.parametrize("months, totals", [([], []), ([date(2026, 10, 1)], [1, 2])])
+def test_trend_chart_rejects_mismatched_data(months, totals):
+    with pytest.raises(ValueError):
+        charts.trend_chart(months, totals)
+
+
 def test_dollar_signs_are_not_read_as_math(october_rows):
     ax = charts.budget_chart(october_rows, "October 2026").axes[0]
 

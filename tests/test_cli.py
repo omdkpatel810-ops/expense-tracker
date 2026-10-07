@@ -40,6 +40,30 @@ def test_add_rejects_bad_amount_without_saving(run):
     assert "No expenses found" in run("list")[1]
 
 
+def test_add_rejects_long_description(run):
+    code, _, err = run("add", "5", "food", "x" * 201)
+
+    assert code == 2
+    assert "200 characters or fewer" in err
+    assert "No expenses found" in run("list")[1]
+
+
+@pytest.mark.parametrize("limit, message", [("abc", "not a whole number"), ("0", "must be 1 or more")])
+def test_list_rejects_bad_limit(run, capsys, limit, message):
+    with pytest.raises(SystemExit) as exit_info:
+        run("list", "--limit", limit)
+
+    assert exit_info.value.code == 2
+    assert message in capsys.readouterr().err
+
+
+def test_categories_when_empty(run):
+    code, out, _ = run("categories")
+
+    assert code == 0
+    assert "No categories yet" in out
+
+
 def test_add_rejects_future_date(run):
     tomorrow = (date.today() + timedelta(days=1)).isoformat()
     code, _, err = run("add", "5", "food", "--date", tomorrow)
