@@ -144,6 +144,35 @@ def test_monthly_totals(conn):
     assert db.monthly_totals(conn, *span, category="rent") == {"2026-09": 500}
 
 
+def query_plan(conn, sql, params):
+    return " | ".join(row[3] for row in conn.execute("EXPLAIN QUERY PLAN " + sql, params))
+
+
+def test_report_and_trend_totals_read_only_the_covering_index(conn):
+    month = ["2026-09-01", "2026-10-01"]
+    report_sql = (
+        "SELECT c.name, SUM(e.amount_cents) FROM expenses AS e "
+        "JOIN categories AS c ON c.id = e.category_id "
+        "WHERE e.spent_on >= ? AND e.spent_on < ? GROUP BY c.id"
+    )
+    trend_sql = (
+        "SELECT substr(e.spent_on, 1, 7) AS month, SUM(e.amount_cents) FROM expenses AS e "
+        "JOIN categories AS c ON c.id = e.category_id "
+        "WHERE e.spent_on >= ? AND e.spent_on < ? GROUP BY month"
+    )
+
+    assert "COVERING INDEX idx_expenses_month_totals" in query_plan(conn, report_sql, month)
+    assert "COVERING INDEX idx_expenses_month_totals" in query_plan(conn, trend_sql, month)
+
+
+def test_listing_a_month_uses_the_date_index(conn):
+    sql = (
+        "SELECT e.id FROM expenses AS e JOIN categories AS c ON c.id = e.category_id "
+        "WHERE e.spent_on >= ? AND e.spent_on < ? ORDER BY e.spent_on DESC, e.id DESC LIMIT 20"
+    )
+    assert "INDEX idx_expenses_spent_on" in query_plan(conn, sql, ["2026-09-01", "2026-10-01"])
+
+
 def test_data_is_saved_to_disk(tmp_path):
     path = tmp_path / "nested" / "expenses.db"
 

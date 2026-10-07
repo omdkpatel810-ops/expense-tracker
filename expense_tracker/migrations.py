@@ -80,6 +80,16 @@ MIGRATIONS: list[list[str]] = [
         )
         """,
     ],
+    # 4. A covering index for the report and trend totals. Those queries only
+    #    read spent_on, category_id and amount_cents, so with all three in one
+    #    index SQLite answers from the index alone and never visits the table.
+    #    Without it, the date index made long ranges (a 12-month trend) slower
+    #    than a full table scan, because every matching row was a separate
+    #    table lookup. scripts/benchmark.py measures all of this.
+    [
+        "CREATE INDEX idx_expenses_month_totals "
+        "ON expenses (spent_on, category_id, amount_cents)",
+    ],
 ]
 
 
