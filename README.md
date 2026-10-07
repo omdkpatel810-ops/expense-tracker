@@ -1,53 +1,40 @@
 # Expense Tracker
 
-![tests](https://github.com/omdkpatel810-ops/expense-tracker/actions/workflows/tests.yml/badge.svg)
+[![tests](https://github.com/omdkpatel810-ops/expense-tracker/actions/workflows/tests.yml/badge.svg)](https://github.com/omdkpatel810-ops/expense-tracker/actions/workflows/tests.yml)
+![coverage 99.8%](https://img.shields.io/badge/coverage-99.8%25-brightgreen)
+![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)
+[![MIT license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-Track your spending from the command line, set monthly budgets, and get warned before you overspend. Expenses are saved in a local SQLite database, so your data stays on your machine and survives restarts.
+Track your spending from the command line, set monthly budgets, and get warned before you overspend. Expenses live in a local SQLite database, so your data stays on your machine.
 
-```text
-$ expense add 48.75 food "Costco"
-Added #8: $48.75 · food · 2026-10-04 · Costco
-! food is at 84% of its $300.00 budget for October 2026, $47.25 left.
+![Demo: adding an expense triggers a budget warning, the monthly report shows each category against its budget, and a chart is saved](docs/demo.gif)
 
-$ expense report
-Spending report: October 2026
+**At a glance**
 
-Category      Spent     Budget     Left  Used  Status
---------  ---------  ---------  -------  ----  --------------
-rent      $1,150.00  $1,150.00    $0.00  100%  limit reached
-food        $252.75    $300.00   $47.25   84%  close to limit
-transit     $113.00    $113.00    $0.00  100%  limit reached
-fun          $93.50     $80.00  -$13.50  116%  over budget
-coffee        $4.25          -        -     -  no budget
+- 143 tests with 99.8% line coverage, run on every push on Python 3.10 and 3.13; CI fails below 95%
+- The monthly report runs in **2.7 ms on 100,000 expenses**, after benchmarking found and fixed an index that made long date ranges slower (see [Performance](#performance))
+- Versioned schema migrations: a database from the very first release opens in the current version with every expense kept
 
-Total spent: $1,613.50
-Budgeted categories: $1,609.25 of $1,643.00 (97%)
-
-Alerts
-  ! food is at 84% of its $300.00 budget for October 2026, $47.25 left.
-  ! fun is $13.50 over its $80.00 budget for October 2026 ($93.50 spent).
-```
-
-And save it as a chart:
+## Charts
 
 ```bash
 expense chart budget --month 2026-09
 ```
 
-![Spending vs budget for September 2026: rent, transit and phone exactly on budget, food over at 112%, fun close to its limit at 88%, coffee with no budget](docs/budget-chart.png)
+![Spending vs budget for September 2026: rent, transit and phone exactly on budget, food over at 127%, fun close to its limit at 91%, coffee with no budget](docs/budget-chart.png)
 
 ```bash
 expense chart trend --category food
 ```
 
-![Monthly food spending from May to October 2026 against a $300 budget line: four of the five full months went over](docs/food-trend-chart.png)
+![Monthly food spending from May to October 2026 against a $300 budget line: every full month went over](docs/food-trend-chart.png)
 
 ## Features
 
 - **Add expenses** with an amount, category, optional description and date (`today`, `yesterday` or `YYYY-MM-DD`)
 - **List expenses** newest first, filtered by month and/or category, with a running total
 - **Categories** are normalized, so `Food`, `food` and ` food ` are the same category
-- **Monthly budgets** per category, shown next to each category's expense count
+- **Monthly budgets** per category
 - **Monthly reports** of spending against each budget: money left, percent used and status
 - **Budget warnings** the moment an expense takes a category to 80% of its budget or over it
 - **Charts** saved as PNG, SVG or PDF: spending against each budget for a month, and monthly totals over time
@@ -64,7 +51,9 @@ cd expense-tracker
 python3 -m venv .venv
 source .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -e ".[dev]"
-expense --help
+
+python scripts/demo.py           # optional: six months of sample data in demo.db
+EXPENSE_DB=demo.db expense report --month 2026-09
 ```
 
 ## Usage
@@ -91,45 +80,23 @@ expense chart trend                                  # last 6 months, all spendi
 expense chart trend --months 12 --category food      # with the food budget line
 ```
 
-![Total monthly spending from May to October 2026, labeled at the highest month and the month in progress](docs/trend-chart.png)
-
-```text
-$ expense list
-ID  Date        Category      Amount  Description
---  ----------  ---------  ---------  ---------------
- 1  2026-09-30  rent       $1,150.00  October rent
- 4  2026-09-29  coffee         $4.25
- 2  2026-09-29  food          $12.50  Lunch at Subway
- 3  2026-09-15  transit      $113.00  U-Pass top-up
- 5  2026-08-28  groceries     $64.37  Superstore run
-
-Total for 5 expenses: $1,344.12
-
-$ expense categories
-Category   Expenses  Monthly budget
----------  --------  --------------
-coffee            1               -
-food              2         $300.00
-groceries         1               -
-rent              1       $1,150.00
-transit           1         $113.00
-```
-
 Data is stored in `~/.expense_tracker/expenses.db`. Set `EXPENSE_DB=/path/to/file.db` or pass `--db` to use a different file.
 
 ## How it works
 
-```text
-expense_tracker/
-  cli.py         reads command-line arguments, prints tables
-  parsing.py     checks categories, dates and months typed by the user
-  money.py       converts "12.50" to 1250 cents and back
-  db.py          the only module that runs SQL queries
-  migrations.py  every version of the database schema, in order
-  reports.py     budget status and alert rules (no SQL, no printing)
-  charts.py      draws the charts with matplotlib
-tests/           one test file per module (135 tests)
+```mermaid
+flowchart LR
+    you([You, in a terminal]) --> cli["cli.py<br/>commands and tables"]
+    cli --> parsing["parsing.py + money.py<br/>check and convert input"]
+    cli --> reports["reports.py<br/>budget status and alerts"]
+    cli --> charts["charts.py<br/>matplotlib images"]
+    charts --> reports
+    cli --> db["db.py<br/>every SQL query"]
+    db --> migrations["migrations.py<br/>schema versions"]
+    db --> sqlite[("SQLite file")]
 ```
+
+Each module has one job, and only `db.py` talks to the database. `reports.py` holds the budget rules as pure functions, with no SQL and no printing, so they're tested directly.
 
 **Money is stored as integer cents.** Floats can't represent most decimal amounts exactly (`0.1 + 0.2 == 0.30000000000000004`), so totals drift as you add up many prices. Whole numbers of cents never drift.
 
@@ -156,19 +123,20 @@ erDiagram
     }
 ```
 
-**Schema changes are versioned migrations.** Each database file stores its schema version in SQLite's `PRAGMA user_version`. When the app opens a file, it runs every newer migration from [`migrations.py`](expense_tracker/migrations.py), each inside its own transaction, so an upgrade either applies completely or rolls back. A database from the first release (version 0, one `expenses` table with the category name on each row) is upgraded to version 3 with every expense, id and date kept. That upgrade is covered by a test that builds an old-format file and opens it.
+**Schema changes are versioned migrations.** Each database file stores its schema version in SQLite's `PRAGMA user_version`. When the app opens a file, it runs every newer migration from [`migrations.py`](expense_tracker/migrations.py), each inside its own transaction, so an upgrade either applies completely or rolls back. A test builds a file in the first release's format and checks that every expense, id and date survives the upgrade.
 
 | Version | Change |
 |---|---|
 | 1 | `expenses` table with the category name stored on each row |
 | 2 | `categories` table; `expenses` rebuilt with a `category_id` foreign key |
 | 3 | `budgets` table, one monthly limit per category |
+| 4 | covering index for report and trend totals (see [Performance](#performance)) |
 
-**Month filters use a half-open range.** `--month 2026-09` becomes `spent_on >= '2026-09-01' AND spent_on < '2026-10-01'`, which is correct for every month length and lets SQLite use the date index.
+**Month filters use a half-open range.** `--month 2026-09` becomes `spent_on >= '2026-09-01' AND spent_on < '2026-10-01'`, which is correct for every month length and lets SQLite use an index.
 
 **All queries use `?` parameters**, never string formatting, which prevents SQL injection.
 
-**Budget rules live in one pure module.** [`reports.py`](expense_tracker/reports.py) takes totals in cents and returns each category's status, with no database or printing code, so every boundary is tested directly. Percentages use integer math (`spent * 100 >= limit * 80`), so there's no float rounding right at the 80% line.
+**Budget alerts follow one table of rules.** Percentages use integer math (`spent * 100 >= limit * 80`), so there's no float rounding right at the 80% line.
 
 | Used | Status | Alert? |
 |---|---|---|
@@ -177,15 +145,28 @@ erDiagram
 | exactly 100% | limit reached | no, because fixed bills like rent are budgeted at their exact amount |
 | over 100% | over budget | yes |
 
-**Charts follow a few fixed design rules.** One series color, with amber and red reserved for "close to limit" and "over budget" and always paired with a text label, so color is never the only signal. Thin bars, hairline gridlines, and labels only where they matter (the peak and the latest month on trend charts). End-of-bar labels are measured with matplotlib's renderer and the axis is widened until they fit, so nothing is cut off. Charts are drawn on `matplotlib.figure.Figure` directly instead of `pyplot`, so there's no global state or GUI backend, and matplotlib is imported only when a chart is drawn, so the other commands start in about 0.06 s.
+**Charts follow a few fixed design rules.** One series color, with amber and red reserved for "close to limit" and "over budget" and always paired with a text label, so color is never the only signal. Thin bars, hairline gridlines, and labels only where they matter. End-of-bar labels are measured with matplotlib's renderer and the axis is widened until they fit, so nothing is cut off. Charts are drawn on `matplotlib.figure.Figure` directly instead of `pyplot`, so there's no global state or GUI backend, and matplotlib is imported only when a chart is drawn, so the other commands start in about 0.06 s.
+
+## Performance
+
+[`scripts/benchmark.py`](scripts/benchmark.py) builds a database of 100,000 expenses (three years, 12 categories) and times the app's real queries, median of 15 runs:
+
+| Query | No date index | Date index only | Date + covering index | Speedup |
+|---|---:|---:|---:|---:|
+| Monthly report totals (one month) | 9.52 ms | 4.49 ms | **1.88 ms** | 5.1x |
+| List one month, newest 20 | 8.92 ms | 0.07 ms | **0.13 ms** | 68.8x |
+| 12-month trend totals | 30.59 ms | 63.01 ms | **14.39 ms** | 2.1x |
+| `expense report` end to end | 12.85 ms | 7.36 ms | **2.70 ms** | 4.8x |
+
+The first benchmark showed the date index making the 12-month trend **twice as slow** as no index at all. A year matches about a third of all rows, and with a plain index on `spent_on` every match is a separate lookup back into the table, which costs more than reading the whole table in order. Migration 4 adds a covering index on `(spent_on, category_id, amount_cents)`, which holds every column the totals need, so SQLite answers from the index alone. Tests check the query plans, so a later change can't silently undo it. Your numbers will vary by machine; run `python scripts/benchmark.py` to measure your own.
 
 ## Running the tests
 
 ```bash
-python -m pytest -v
+python -m pytest --cov
 ```
 
-Tests also run automatically on every push with GitHub Actions, on Python 3.10 and 3.13.
+143 tests, 99.8% line coverage. They also run on every push with GitHub Actions on Python 3.10 and 3.13, and CI fails if coverage drops below 95%.
 
 ## Roadmap
 
@@ -193,4 +174,9 @@ Tests also run automatically on every push with GitHub Actions, on Python 3.10 a
 - [x] Normalized schema: categories table, budgets table, migrations
 - [x] Monthly reports and budget alerts
 - [x] Spending charts with matplotlib
+- [x] Benchmarked and indexed for 100,000+ expenses
 - [ ] Delete and edit expenses
+
+## License
+
+[MIT](LICENSE)
